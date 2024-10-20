@@ -2,112 +2,38 @@ import Director from '#models/director'; // Asegúrate que el modelo se llame "D
 import type { HttpContext } from '@adonisjs/core/http';
 import axios from 'axios';
 import { faker } from '@faker-js/faker'; // Importa Faker
+import ApiToken from '#models/token'; // Importa el modelo ApiToken
 
 export default class DirectorControladorsController {
-  
-  // Método para obtener todos los directores locales y consultar a la API externa
-  public async index({ response }: HttpContext) {
+  private async getToken() {
+    const tokenRecord = await ApiToken.query().orderBy('created_at', 'desc').first();
+    return tokenRecord ? tokenRecord.token : null;
+  }
+
+  private async makeApiRequest(method: 'get' | 'post' | 'put' | 'delete', url: string, data?: any) {
+    const token = await this.getToken();
+
+    if (!token) {
+      throw new Error('Token no disponible para realizar la solicitud.');
+    }
+
     try {
-      // Consulta a la API externa
-      const apiResponse = await axios.get('http://192.168.1.135:8000/api/personas', {
+      const response = await axios({
+        method,
+        url,
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
         },
+        data,
       });
-
-      // Obtén los directores locales
-      const directores = await Director.all();
-
-      // Devuelve tanto los directores locales como los datos de la API externa
-      return response.json({ local: directores, external: apiResponse.data });
+      return response.data;
     } catch (error) {
-      console.error('Error al obtener datos de la API externa:', error);
-      return response.status(500).json({ message: 'Error al obtener datos de la API externa' });
+      console.error('Error en la solicitud a la API externa:', error);
+      throw new Error('Error al comunicarse con la API externa.');
     }
   }
 
-  // Método para almacenar un nuevo director y enviar datos a la API externa
-  public async store(ctx: HttpContext) {
-    const { request, response } = ctx;
-    const data = request.only(['nombre', 'nacionalidad']);
-    const director = await Director.create(data);
-
-    // Generar y enviar un director falso a la API externa
-    await this.generateFakeDirector(ctx);
-
-    return response.status(201).json(director);
-  }
-
-  // Método para mostrar un director específico y consultar a la API externa
-  public async show({ params, response }: HttpContext) {
-    try {
-      // Consulta a la API externa
-      const apiResponse = await axios.get(`http://192.168.1.135:8000/api/personas/${params.id}`, {
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      // Busca el director en la base de datos local
-      const director = await Director.findOrFail(params.id);
-
-      // Devuelve los datos locales y de la API externa
-      return response.json({ local: director, external: apiResponse.data });
-    } catch (error) {
-      console.error('Error al obtener datos de la API externa:', error);
-      return response.status(500).json({ message: 'Error al obtener datos de la API externa' });
-    }
-  }
-
-  // Método para actualizar un director y enviar datos a la API externa
-  public async update({ params, request, response }: HttpContext) {
-    const director = await Director.findOrFail(params.id);
-    director.merge(request.only(['nombre', 'nacionalidad']));
-    await director.save();
-
-    try {
-      // Enviar actualización a la API externa
-      const apiResponse = await axios.put(`http://192.168.1.135:8000/api/personas/${params.id}`, request.only(['nombre', 'nacionalidad']));
-      return response.json({
-        director,
-        apiResponse: apiResponse.data,
-      });
-    } catch (error) {
-      console.error('Error al enviar datos a la API:', error);
-      return response.status(500).json({
-        message: 'Error al enviar datos a la API',
-        error: error.message,
-      });
-    }
-  }
-
-  // Método para eliminar un director y enviar datos a la API externa
-  public async destroy({ params, response }: HttpContext) {
-    const director = await Director.findOrFail(params.id);
-    await director.delete();
-
-    try {
-      // Enviar la solicitud de eliminación a la API externa
-      const apiResponse = await axios.delete(`http://192.168.1.135:8000/api/personas/${params.id}`, {
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      return response.status(204).json({
-        message: 'Director eliminado exitosamente',
-        apiResponse: apiResponse.data,
-      });
-    } catch (error) {
-      console.error('Error al eliminar datos en la API externa:', error);
-      return response.status(500).json({
-        message: 'Error al eliminar datos en la API externa',
-        error: error.message,
-      });
-    }
-  }
-
-  // Método privado para generar datos falsos de un director
   private generateDirectorData() {
     return {
       nombres: faker.name.firstName(),
@@ -116,21 +42,74 @@ export default class DirectorControladorsController {
     };
   }
 
-  // Método para enviar un director falso a la API externa
-  public async generateFakeDirector({ response }: HttpContext) {
-    const directorData = this.generateDirectorData(); // Genera un director falso
+  public async index({ response }: HttpContext) {
+    try {
+      const [apiResponse, directores] = await Promise.all([
+        this.makeApiRequest('get', 'http://192.168.1.135:8000/api/personas'),
+        Director.all(),
+      ]);
+
+      return response.json({ local: directores, external: apiResponse });
+    } catch (error) {
+      return response.status(500).json({ message: error.message });
+    }
+  }
+
+  public async store({ request, response }: HttpContext) {
+    const data = request.only(['nombre', 'nacionalidad']);
+    const director = await Director.create(data);
+
+    await this.generateFakeDirector();
+
+    return response.status(201).json(director);
+  }
+
+  public async show({ params, response }: HttpContext) {
+    try {
+      const [apiResponse, director] = await Promise.all([
+        this.makeApiRequest('get', `http://192.168.1.135:8000/api/personas/${params.id}`),
+        Director.findOrFail(params.id),
+      ]);
+
+      return response.json({ local: director, external: apiResponse });
+    } catch (error) {
+      return response.status(500).json({ message: error.message });
+    }
+  }
+
+  public async update({ params, request, response }: HttpContext) {
+    const director = await Director.findOrFail(params.id);
+    director.merge(request.only(['nombre', 'nacionalidad']));
+    await director.save();
+    const fakeData = this.generateDirectorData();
 
     try {
-      const apiResponse = await axios.post('http://192.168.1.135:8000/api/personas', directorData, {
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
+      const apiResponse = await this.makeApiRequest('put', `http://192.168.1.135:8000/api/personas/${params.id}`,fakeData);
+      return response.json({ director, apiResponse });
+    } catch (error) {
+      return response.status(500).json({ message: 'Error al enviar datos a la API', error: error.message });
+    }
+  }
 
-      return response.status(201).json(apiResponse.data); 
+  public async destroy({ params, response }: HttpContext) {
+    const director = await Director.findOrFail(params.id);
+    await director.delete();
+
+    try {
+      await this.makeApiRequest('delete', `http://192.168.1.135:8000/api/personas/${params.id}`);
+      return response.status(204).json({ message: 'Director eliminado exitosamente' });
+    } catch (error) {
+      return response.status(500).json({ message: 'Error al eliminar datos en la API externa', error: error.message });
+    }
+  }
+
+  public async generateFakeDirector() {
+    const directorData = this.generateDirectorData(); 
+
+    try {
+      await this.makeApiRequest('post', 'http://192.168.1.135:8000/api/personas', directorData);
     } catch (error) {
       console.error('Error enviando el director a la API:', error);
-      return response.status(500).json({ message: 'Error al enviar director a la API' });
     }
   }
 }

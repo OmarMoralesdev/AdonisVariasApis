@@ -2,112 +2,39 @@ import Character from '#models/personaje';
 import type { HttpContext } from '@adonisjs/core/http';
 import axios from 'axios';
 import { faker } from '@faker-js/faker'; // Importa Faker
+import ApiToken from '#models/token'; // Importa el modelo ApiToken
 
 export default class PersonajeControladorsController {
-  // Método para obtener todos los personajes y consultar a la API externa
-  public async index({ response }: HttpContext) {
+
+  private async getToken() {
+    const tokenRecord = await ApiToken.query().orderBy('created_at', 'desc').first();
+    return tokenRecord ? tokenRecord.token : null;
+  }
+
+  private async makeApiRequest(method: 'get' | 'post' | 'put' | 'delete', url: string, data?: any) {
+    const token = await this.getToken();
+
+    if (!token) {
+      throw new Error('Token no disponible para realizar la solicitud.');
+    }
+
     try {
-      // Consulta a la API externa
-      const apiResponse = await axios.get('http://192.168.1.135:8000/api/marcas', {
+      const response = await axios({
+        method,
+        url,
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
         },
+        data,
       });
-
-      // Obtén los personajes locales
-      const personajes = await Character.all();
-
-      // Devuelve tanto los personajes locales como los datos de la API externa
-      return response.json({ local: personajes, external: apiResponse.data });
+      return response.data;
     } catch (error) {
-      console.error('Error al obtener datos de la API externa:', error);
-      return response.status(500).json({ message: 'Error al obtener datos de la API externa' });
+      console.error('Error en la solicitud a la API externa:', error);
+      throw new Error('Error al comunicarse con la API externa.');
     }
   }
 
-  // Método para almacenar un nuevo personaje y enviar datos falsos a la API externa
-  public async store(ctx: HttpContext) {
-    const { request, response } = ctx;
-    const data = request.only(['nombre', 'serieId', 'actorId']);
-    const actor = await Character.create(data);
-
-    // Generar y enviar datos falsos a la API externa
-    await this.generateFakeActor(ctx);
-
-    return response.status(201).json(actor);
-  }
-
-  // Método para mostrar un personaje específico y consultar a la API externa
-  public async show({ params, response }: HttpContext) {
-    try {
-      // Consulta a la API externa
-      const apiResponse = await axios.get(`http://192.168.1.135:8000/api/marcas/${params.id}`, {
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      // Busca el personaje en la base de datos local
-      const personaje = await Character.findOrFail(params.id);
-
-      // Devuelve los datos locales y de la API externa
-      return response.json({ local: personaje, external: apiResponse.data });
-    } catch (error) {
-      console.error('Error al obtener datos de la API externa:', error);
-      return response.status(500).json({ message: 'Error al obtener datos de la API externa' });
-    }
-  }
-
-  // Método para actualizar un personaje y enviar los cambios a la API externa
-  public async update({ params, request, response }: HttpContext) {
-    const personaje = await Character.findOrFail(params.id);
-    personaje.merge(request.only(['nombre', 'serieId', 'actorId']));
-    await personaje.save();
-
-    try {
-      // Enviar la actualización a la API externa
-      const apiResponse = await axios.put(`http://192.168.1.135:8000/api/marcas/${params.id}`, request.only(['nombre', 'serieId', 'actorId']));
-
-      return response.json({
-        personaje,
-        apiResponse: apiResponse.data,
-      });
-    } catch (error) {
-      console.error('Error al enviar datos a la API externa:', error);
-      return response.status(500).json({
-        message: 'Error al enviar datos a la API externa',
-        error: error.message,
-      });
-    }
-  }
-
-  // Método para eliminar un personaje y enviar la eliminación a la API externa
-  public async destroy({ params, response }: HttpContext) {
-    const personaje = await Character.findOrFail(params.id);
-    await personaje.delete();
-
-    try {
-      // Enviar la solicitud de eliminación a la API externa
-      const apiResponse = await axios.delete(`http://192.168.1.135:8000/api/marcas/${params.id}`, {
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      return response.status(204).json({
-        message: 'Personaje eliminado exitosamente',
-        apiResponse: apiResponse.data,
-      });
-    } catch (error) {
-      console.error('Error al eliminar datos en la API externa:', error);
-      return response.status(500).json({
-        message: 'Error al eliminar datos en la API externa',
-        error: error.message,
-      });
-    }
-  }
-
-  // Método privado para generar datos falsos del actor
   private generateActorData() {
     return {
       nombre: faker.name.firstName(),
@@ -115,22 +42,74 @@ export default class PersonajeControladorsController {
     };
   }
 
-  // Método para enviar datos falsos a la API externa
-  public async generateFakeActor(ctx: HttpContext) {
+  public async index({ response }: HttpContext) {
+    try {
+      const apiResponse = await this.makeApiRequest('get', 'http://192.168.1.135:8000/api/marcas');
+      const personajes = await Character.all();
+
+      return response.json({ local: personajes, external: apiResponse });
+    } catch (error) {
+      return response.status(500).json({ message: error.message });
+    }
+  }
+
+  public async store(ctx: HttpContext) {
+    const { request, response } = ctx;
+    const data = request.only(['nombre', 'serieId', 'actorId']);
+    const personaje = await Character.create(data);
+
+    // Generar y enviar datos falsos a la API externa
+    await this.generateFakeActor();
+
+    return response.status(201).json(personaje);
+  }
+
+  public async show({ params, response }: HttpContext) {
+    try {
+      const [apiResponse, personaje] = await Promise.all([
+        this.makeApiRequest('get', `http://192.168.1.135:8000/api/marcas/${params.id}`),
+        Character.findOrFail(params.id),
+      ]);
+
+      return response.json({ local: personaje, external: apiResponse });
+    } catch (error) {
+      return response.status(500).json({ message: error.message });
+    }
+  }
+
+  public async update({ params, request, response }: HttpContext) {
+    const personaje = await Character.findOrFail(params.id);
+    personaje.merge(request.only(['nombre', 'serieId', 'actorId']));
+    await personaje.save();
+    const fakeData = this.generateActorData();
+
+    try {
+      const apiResponse = await this.makeApiRequest('put', `http://192.168.1.135:8000/api/marcas/${params.id}`, fakeData);
+      return response.json({ personaje, apiResponse });
+    } catch (error) {
+      return response.status(500).json({ message: 'Error al enviar datos a la API externa', error: error.message });
+    }
+  }
+
+  public async destroy({ params, response }: HttpContext) {
+    const personaje = await Character.findOrFail(params.id);
+    await personaje.delete();
+
+    try {
+      await this.makeApiRequest('delete', `http://192.168.1.135:8000/api/marcas/${params.id}`);
+      return response.status(204).json({ message: 'Personaje eliminado exitosamente' });
+    } catch (error) {
+      return response.status(500).json({ message: 'Error al eliminar datos en la API externa', error: error.message });
+    }
+  }
+
+  public async generateFakeActor() {
     const actorData = this.generateActorData(); // Genera un actor falso
 
     try {
-      const apiResponse = await axios.post('http://192.168.1.135:8000/api/marcas', actorData, {
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      // Devuelve la respuesta de la API
-      return ctx.response.status(201).json(apiResponse.data);
+      await this.makeApiRequest('post', 'http://192.168.1.135:8000/api/marcas', actorData);
     } catch (error) {
       console.error('Error enviando el actor a la API:', error);
-      return ctx.response.status(500).json({ message: 'Error al enviar actor a la API' });
     }
   }
 }
