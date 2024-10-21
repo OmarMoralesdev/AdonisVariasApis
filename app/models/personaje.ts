@@ -9,10 +9,11 @@ export default class Personaje extends compose(BaseModel, SoftDeletes) {
   declare nombre: string
 
   @column()
-  declare serieId: number
+  declare serie_id: number
 
   @column()
-  declare actorId: number
+  declare actor_id: number
+  
   @column.dateTime({ autoCreate: true })
   declare createdAt: DateTime
 

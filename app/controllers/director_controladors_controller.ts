@@ -1,8 +1,10 @@
-import Director from '#models/director'; // Asegúrate que el modelo se llame "Director"
+import Director from '#models/director';
 import type { HttpContext } from '@adonisjs/core/http';
 import axios from 'axios';
-import { faker } from '@faker-js/faker'; // Importa Faker
-import ApiToken from '#models/token'; // Importa el modelo ApiToken
+import { faker } from '@faker-js/faker';
+import ApiToken from '#models/token';
+
+const baseUrl = 'https://45a0-2806-267-1407-8e80-f980-8893-70dc-ca47.ngrok-free.app';
 
 export default class DirectorControladorsController {
   private async getToken() {
@@ -10,7 +12,7 @@ export default class DirectorControladorsController {
     return tokenRecord ? tokenRecord.token : null;
   }
 
-  private async makeApiRequest(method: 'get' | 'post' | 'put' | 'delete', url: string, data?: any) {
+  private async makeApiRequest(method: 'get' | 'post' | 'put' | 'delete', endpoint: string, data?: any) {
     const token = await this.getToken();
 
     if (!token) {
@@ -20,7 +22,7 @@ export default class DirectorControladorsController {
     try {
       const response = await axios({
         method,
-        url,
+        url: `${baseUrl}${endpoint}`, 
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
@@ -38,14 +40,14 @@ export default class DirectorControladorsController {
     return {
       nombres: faker.name.firstName(),
       apellidos: faker.name.lastName(),
-      fecha_nacimiento: faker.date.past(),
+      fecha_nacimiento: faker.date.past().toISOString().split('T')[0], 
     };
   }
 
   public async index({ response }: HttpContext) {
     try {
       const [apiResponse, directores] = await Promise.all([
-        this.makeApiRequest('get', 'http://192.168.1.135:8000/api/personas'),
+        this.makeApiRequest('get', '/api/personas'), 
         Director.all(),
       ]);
 
@@ -58,16 +60,19 @@ export default class DirectorControladorsController {
   public async store({ request, response }: HttpContext) {
     const data = request.only(['nombre', 'nacionalidad']);
     const director = await Director.create(data);
+    const actorData = this.generateDirectorData();
 
-    await this.generateFakeDirector();
-
-    return response.status(201).json(director);
-  }
-
+    try {
+        const apiResponse = await this.makeApiRequest('post', '/api/personas/', actorData); 
+        return response.status(201).json({ director, apiResponse });
+    } catch (error) {
+      return response.status(500).json({ message: error.message });
+    }
+}
   public async show({ params, response }: HttpContext) {
     try {
       const [apiResponse, director] = await Promise.all([
-        this.makeApiRequest('get', `http://192.168.1.135:8000/api/personas/${params.id}`),
+        this.makeApiRequest('get', `/api/personas/${params.id}`), 
         Director.findOrFail(params.id),
       ]);
 
@@ -84,7 +89,7 @@ export default class DirectorControladorsController {
     const fakeData = this.generateDirectorData();
 
     try {
-      const apiResponse = await this.makeApiRequest('put', `http://192.168.1.135:8000/api/personas/${params.id}`,fakeData);
+      const apiResponse = await this.makeApiRequest('put', `/api/personas/${params.id}`, fakeData); // Solo el endpoint relativo
       return response.json({ director, apiResponse });
     } catch (error) {
       return response.status(500).json({ message: 'Error al enviar datos a la API', error: error.message });
@@ -96,20 +101,10 @@ export default class DirectorControladorsController {
     await director.delete();
 
     try {
-      await this.makeApiRequest('delete', `http://192.168.1.135:8000/api/personas/${params.id}`);
+      await this.makeApiRequest('delete', `/api/personas/${params.id}`); // Solo el endpoint relativo
       return response.status(204).json({ message: 'Director eliminado exitosamente' });
     } catch (error) {
       return response.status(500).json({ message: 'Error al eliminar datos en la API externa', error: error.message });
-    }
-  }
-
-  public async generateFakeDirector() {
-    const directorData = this.generateDirectorData(); 
-
-    try {
-      await this.makeApiRequest('post', 'http://192.168.1.135:8000/api/personas', directorData);
-    } catch (error) {
-      console.error('Error enviando el director a la API:', error);
     }
   }
 }

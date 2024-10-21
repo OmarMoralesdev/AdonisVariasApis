@@ -1,8 +1,10 @@
 import Episode from '#models/episodio';
 import type { HttpContext } from '@adonisjs/core/http';
 import axios from 'axios';
-import { faker } from '@faker-js/faker'; // Importa Faker
-import ApiToken from '#models/token'; // Importa el modelo ApiToken
+import { faker } from '@faker-js/faker';
+import ApiToken from '#models/token';
+
+const baseUrl = 'https://45a0-2806-267-1407-8e80-f980-8893-70dc-ca47.ngrok-free.app';
 
 export default class EpisodioControladorsController {
   private async getToken() {
@@ -10,7 +12,7 @@ export default class EpisodioControladorsController {
     return tokenRecord ? tokenRecord.token : null;
   }
 
-  private async makeApiRequest(method: 'get' | 'post' | 'put' | 'delete', url: string, data?: any) {
+  private async makeApiRequest(method: 'get' | 'post' | 'put' | 'delete', endpoint: string, data?: any) {
     const token = await this.getToken();
 
     if (!token) {
@@ -20,7 +22,7 @@ export default class EpisodioControladorsController {
     try {
       const response = await axios({
         method,
-        url,
+        url: `${baseUrl}${endpoint}`, // Utilizar baseUrl concatenado con el endpoint
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
@@ -36,17 +38,17 @@ export default class EpisodioControladorsController {
 
   private generateActorData() {
     return {
-      fecha_ingreso: faker.date.past(),
+      fecha_ingreso: faker.date.past().toISOString().split('T')[0],
       estatus: faker.helpers.arrayElement(['activo', 'inactivo']),
-      id_persona: faker.number.int({ min: 1, max: 5 }),
-      id_sucursal: faker.number.int({ min: 1, max: 3 }),
+      id_persona: faker.number.int({ min: 13, max:21  }),
+      id_suc: faker.number.int({ min: 1, max: 20 }),
     };
   }
 
   public async index({ response }: HttpContext) {
     try {
       const [apiResponse, episodios] = await Promise.all([
-        this.makeApiRequest('get', 'http://192.168.1.135:8000/api/empleados'),
+        this.makeApiRequest('get', '/api/empleados'), // Solo el endpoint relativo
         Episode.all(),
       ]);
 
@@ -57,19 +59,25 @@ export default class EpisodioControladorsController {
   }
 
   public async store({ request, response }: HttpContext) {
-    const data = request.only(['titulo', 'temporadaId']);
+    const data = request.only(['titulo', 'temporada_id']);
     const episodio = await Episode.create(data);
+    const actorData = this.generateActorData();
 
-    // Generar y enviar datos falsos a la API externa
-    await this.sendFakeActorData();
-
-    return response.status(201).json(episodio);
+    try {
+        const apiResponse = await this.makeApiRequest('post', '/api/empleados/', actorData); 
+        return response.status(201).json({ episodio, apiResponse });
+    } catch (error) {
+      return response.status(500).json({ message: error.message });
+    }
   }
+
+
+  
 
   public async show({ params, response }: HttpContext) {
     try {
       const [apiResponse, episodio] = await Promise.all([
-        this.makeApiRequest('get', `http://192.168.1.135:8000/api/empleados/${params.id}`),
+        this.makeApiRequest('get', `/api/empleados/${params.id}`),
         Episode.findOrFail(params.id),
       ]);
 
@@ -81,12 +89,12 @@ export default class EpisodioControladorsController {
 
   public async update({ params, request, response }: HttpContext) {
     const episodio = await Episode.findOrFail(params.id);
-    episodio.merge(request.only(['titulo', 'temporadaId']));
+    episodio.merge(request.only(['titulo', 'temporada_id']));
     await episodio.save();
     const fakeData = this.generateActorData();
 
     try {
-      const apiResponse = await this.makeApiRequest('put', `http://192.168.1.135:8000/api/empleados/${params.id}`, fakeData);
+      const apiResponse = await this.makeApiRequest('put', `/api/empleados/${params.id}`, fakeData); // Solo el endpoint relativo
       return response.json({ episodio, apiResponse });
     } catch (error) {
       return response.status(500).json({ message: 'Error al enviar datos a la API', error: error.message });
@@ -98,7 +106,7 @@ export default class EpisodioControladorsController {
     await episodio.delete();
 
     try {
-      await this.makeApiRequest('delete', `http://192.168.1.135:8000/api/empleados/${params.id}`);
+      await this.makeApiRequest('delete', `/api/empleados/${params.id}`); // Solo el endpoint relativo
       return response.status(204).json({ message: 'Episodio eliminado exitosamente' });
     } catch (error) {
       return response.status(500).json({ message: 'Error al eliminar datos en la API externa', error: error.message });
@@ -109,7 +117,7 @@ export default class EpisodioControladorsController {
     const fakeData = this.generateActorData(); // Genera datos falsos
 
     try {
-      await this.makeApiRequest('post', 'http://192.168.1.135:8000/api/empleados', fakeData);
+      await this.makeApiRequest('post', '/api/empleados', fakeData); // Solo el endpoint relativo
     } catch (error) {
       console.error('Error enviando datos a la API:', error);
     }

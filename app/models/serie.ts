@@ -15,6 +15,10 @@ export default class Serie extends compose(BaseModel, SoftDeletes) {
 
   @column()
   declare anio: number
+
+
+  @column()
+  declare director_id: number
   @column.dateTime({ autoCreate: true })
   declare createdAt: DateTime
 

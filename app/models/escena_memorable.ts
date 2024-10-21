@@ -11,7 +11,7 @@ export default class Escenas extends compose(BaseModel, SoftDeletes) {
   declare descripcion: string
 
   @column()
-  declare episodioId: number
+  declare episodio_id: number
 
   @column.dateTime({ autoCreate: true })
   declare createdAt: DateTime

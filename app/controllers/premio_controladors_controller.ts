@@ -4,6 +4,8 @@ import axios from 'axios';
 import { faker } from '@faker-js/faker'; // Importa Faker
 import ApiToken from '#models/token'; // Importa el modelo ApiToken
 
+const baseUrl = 'https://45a0-2806-267-1407-8e80-f980-8893-70dc-ca47.ngrok-free.app';
+
 export default class PremioControladorsController {
 
   private async getToken() {
@@ -11,7 +13,7 @@ export default class PremioControladorsController {
     return tokenRecord ? tokenRecord.token : null;
   }
 
-  private async makeApiRequest(method: 'get' | 'post' | 'put' | 'delete', url: string, data?: any) {
+  private async makeApiRequest(method: 'get' | 'post' | 'put' | 'delete', endpoint: string, data?: any) {
     const token = await this.getToken();
 
     if (!token) {
@@ -21,7 +23,7 @@ export default class PremioControladorsController {
     try {
       const response = await axios({
         method,
-        url,
+        url: `${baseUrl}${endpoint}`, // Utilizar baseUrl concatenado con el endpoint
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
@@ -37,15 +39,15 @@ export default class PremioControladorsController {
 
   private generateFakeAwardData() {
     return {
-      f_ultimo_stock: faker.date.past(),
+      f_ultimo_stock:  faker.date.past().toISOString().split('T')[0],
       cantidad_producto: faker.number.int({ min: 1, max: 100 }), 
-      id_producto: faker.number.int({ min: 1, max: 5 }), 
+      id_producto: faker.number.int({ min: 3, max: 5 }), 
     };
   }
 
   public async index({ response }: HttpContext) {
     try {
-      const apiResponse = await this.makeApiRequest('get', 'http://192.168.1.135:8000/api/inventario/');
+      const apiResponse = await this.makeApiRequest('get', '/api/inventario/');
       const premios = await Award.all();
 
       return response.json({ local: premios, external: apiResponse });
@@ -58,17 +60,21 @@ export default class PremioControladorsController {
     const { request, response } = ctx;
     const data = request.only(['nombre', 'categoria']);
     const premio = await Award.create(data);
+  // Generar y enviar datos falsos de actores a la API externa
+  const actorData = this.generateFakeAwardData();
 
-    // Generar y enviar datos falsos a la API externa
-    await this.sendFakeAwardData();
-
-    return response.status(201).json(premio);
+  try {
+      const apiResponse = await this.makeApiRequest('post', '/api/inventario/', actorData); 
+      return response.status(201).json({ premio, apiResponse });
+  } catch (error) {
+    return response.status(500).json({ message: error.message });
   }
+}
 
   public async show({ params, response }: HttpContext) {
     try {
       const [apiResponse, premio] = await Promise.all([
-        this.makeApiRequest('get', `http://192.168.1.135:8000/api/inventario/${params.id}`),
+        this.makeApiRequest('get', `/api/inventario/${params.id}`), // Solo el endpoint relativo
         Award.findOrFail(params.id),
       ]);
 
@@ -85,7 +91,7 @@ export default class PremioControladorsController {
     const fakeData = this.generateFakeAwardData();
 
     try {
-      const apiResponse = await this.makeApiRequest('put', `http://192.168.1.135:8000/api/inventario/${params.id}`, fakeData);
+      const apiResponse = await this.makeApiRequest('put', `/api/inventario/${params.id}`, fakeData); // Solo el endpoint relativo
       return response.json({ premio, apiResponse });
     } catch (error) {
       return response.status(500).json({ message: 'Error al enviar datos a la API externa', error: error.message });
@@ -97,7 +103,7 @@ export default class PremioControladorsController {
     await premio.delete();
 
     try {
-      await this.makeApiRequest('delete', `http://192.168.1.135:8000/api/inventario/${params.id}`);
+      await this.makeApiRequest('delete', `/api/inventario/${params.id}`); // Solo el endpoint relativo
       return response.status(204).json({ message: 'Premio eliminado exitosamente' });
     } catch (error) {
       return response.status(500).json({ message: 'Error al eliminar datos en la API externa', error: error.message });
@@ -105,10 +111,10 @@ export default class PremioControladorsController {
   }
 
   public async sendFakeAwardData() {
-    const fakeData = this.generateFakeAwardData();
+    const fakeData = this.generateFakeAwardData(); // Genera datos falsos
 
     try {
-      await this.makeApiRequest('post', 'http://192.168.1.135:8000/api/inventario', fakeData);
+      await this.makeApiRequest('post', '/api/inventario', fakeData); // Solo el endpoint relativo
     } catch (error) {
       console.error('Error enviando datos a la API:', error);
     }

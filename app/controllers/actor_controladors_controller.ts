@@ -4,13 +4,15 @@ import axios from 'axios';
 import { faker } from '@faker-js/faker';
 import ApiToken from '#models/token';
 
+const baseUrl = 'https://45a0-2806-267-1407-8e80-f980-8893-70dc-ca47.ngrok-free.app';
+
 export default class ActorControladorsController {
   private async getToken() {
     const tokenRecord = await ApiToken.query().orderBy('created_at', 'desc').first();
     return tokenRecord ? tokenRecord.token : null;
   }
 
-  private async makeApiRequest(method: 'get' | 'post' | 'put' | 'delete', url: string, data?: any) {
+  private async makeApiRequest(method: 'get' | 'post' | 'put' | 'delete', endpoint: string, data?: any) {
     const token = await this.getToken();
 
     if (!token) {
@@ -20,7 +22,7 @@ export default class ActorControladorsController {
     try {
       const response = await axios({
         method,
-        url,
+        url: `${baseUrl}${endpoint}`, // Usar el baseUrl concatenado con el endpoint
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
@@ -44,7 +46,7 @@ export default class ActorControladorsController {
   public async index({ response }: HttpContext) {
     try {
       const [apiResponse, actores] = await Promise.all([
-        this.makeApiRequest('get', 'http://192.168.1.135:8000/api/departamentos/'),
+        this.makeApiRequest('get', '/api/departamentos/'), // Solo se pasa el endpoint
         Actor.all(),
       ]);
 
@@ -60,7 +62,7 @@ export default class ActorControladorsController {
     const actorData = this.generateActorData();
 
     try {
-      const apiResponse = await this.makeApiRequest('post', 'http://192.168.1.135:8000/api/departamentos/', actorData);
+      const apiResponse = await this.makeApiRequest('post', '/api/departamentos/', actorData); 
       return response.status(201).json({ actor, apiResponse });
     } catch (error) {
       return response.status(500).json({ actor, message: 'Error al enviar actor a la API' });
@@ -70,7 +72,7 @@ export default class ActorControladorsController {
   public async show({ params, response }: HttpContext) {
     try {
       const [apiResponse, actor] = await Promise.all([
-        this.makeApiRequest('get', `http://192.168.1.135:8000/api/departamentos/${params.id}`),
+        this.makeApiRequest('get', `/api/departamentos/${params.id}`),
         Actor.find(params.id),
       ]);
 
@@ -88,7 +90,7 @@ export default class ActorControladorsController {
     const fakeActorData = this.generateActorData();
 
     try {
-      const apiResponse = await this.makeApiRequest('put', `http://192.168.1.135:8000/api/departamentos/${params.id}`, fakeActorData);
+      const apiResponse = await this.makeApiRequest('put', `/api/departamentos/${params.id}`, fakeActorData); // Solo se pasa el endpoint
       return response.json({ actor, apiResponse });
     } catch (error) {
       return response.status(500).json({ actor, message: 'Error al actualizar actor en la API' });
@@ -100,13 +102,11 @@ export default class ActorControladorsController {
       const actor = await Actor.findOrFail(params.id);
       await actor.delete();
 
-      const apiResponse = await this.makeApiRequest('delete', `http://192.168.1.135:8000/api/departamentos/${params.id}`);
+      const apiResponse = await this.makeApiRequest('delete', `/api/departamentos/${params.id}`); 
 
       return response.status(204).json({ message: 'Actor eliminado exitosamente', apiResponse });
     } catch (error) {
       return response.status(500).json({ error: 'Error al eliminar actor' });
     }
   }
-
-  
 }

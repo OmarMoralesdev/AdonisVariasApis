@@ -3,6 +3,9 @@ import type { HttpContext } from '@adonisjs/core/http';
 import axios from 'axios';
 import { faker } from '@faker-js/faker'; // Importa Faker
 import ApiToken from '#models/token'; // Importa el modelo ApiToken
+import { Console } from 'console';
+
+const baseUrl = 'https://45a0-2806-267-1407-8e80-f980-8893-70dc-ca47.ngrok-free.app';
 
 export default class PersonajeControladorsController {
 
@@ -11,7 +14,7 @@ export default class PersonajeControladorsController {
     return tokenRecord ? tokenRecord.token : null;
   }
 
-  private async makeApiRequest(method: 'get' | 'post' | 'put' | 'delete', url: string, data?: any) {
+  private async makeApiRequest(method: 'get' | 'post' | 'put' | 'delete', endpoint: string, data?: any) {
     const token = await this.getToken();
 
     if (!token) {
@@ -21,7 +24,7 @@ export default class PersonajeControladorsController {
     try {
       const response = await axios({
         method,
-        url,
+        url: `${baseUrl}${endpoint}`, // Utilizar baseUrl concatenado con el endpoint
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
@@ -44,7 +47,7 @@ export default class PersonajeControladorsController {
 
   public async index({ response }: HttpContext) {
     try {
-      const apiResponse = await this.makeApiRequest('get', 'http://192.168.1.135:8000/api/marcas');
+      const apiResponse = await this.makeApiRequest('get', '/api/marcas');
       const personajes = await Character.all();
 
       return response.json({ local: personajes, external: apiResponse });
@@ -55,19 +58,22 @@ export default class PersonajeControladorsController {
 
   public async store(ctx: HttpContext) {
     const { request, response } = ctx;
-    const data = request.only(['nombre', 'serieId', 'actorId']);
+    const data = request.only(['nombre', 'serie_id', 'actor_id']);
     const personaje = await Character.create(data);
-
-    // Generar y enviar datos falsos a la API externa
-    await this.generateFakeActor();
-
-    return response.status(201).json(personaje);
+    const actorData = this.generateActorData();
+   console.log(data)
+    try {
+        const apiResponse = await this.makeApiRequest('post', '/api/marcas/', actorData); 
+        return response.status(201).json({ personaje, apiResponse });
+    } catch (error) {
+        return response.status(500).json({ actorData, message: 'Error al enviar actor a la API' });
+    }
   }
 
   public async show({ params, response }: HttpContext) {
     try {
       const [apiResponse, personaje] = await Promise.all([
-        this.makeApiRequest('get', `http://192.168.1.135:8000/api/marcas/${params.id}`),
+        this.makeApiRequest('get', `/api/marcas/${params.id}`),
         Character.findOrFail(params.id),
       ]);
 
@@ -84,7 +90,7 @@ export default class PersonajeControladorsController {
     const fakeData = this.generateActorData();
 
     try {
-      const apiResponse = await this.makeApiRequest('put', `http://192.168.1.135:8000/api/marcas/${params.id}`, fakeData);
+      const apiResponse = await this.makeApiRequest('put', `/api/marcas/${params.id}`, fakeData); // Solo el endpoint relativo
       return response.json({ personaje, apiResponse });
     } catch (error) {
       return response.status(500).json({ message: 'Error al enviar datos a la API externa', error: error.message });
@@ -96,7 +102,7 @@ export default class PersonajeControladorsController {
     await personaje.delete();
 
     try {
-      await this.makeApiRequest('delete', `http://192.168.1.135:8000/api/marcas/${params.id}`);
+      await this.makeApiRequest('delete', `/api/marcas/${params.id}`); // Solo el endpoint relativo
       return response.status(204).json({ message: 'Personaje eliminado exitosamente' });
     } catch (error) {
       return response.status(500).json({ message: 'Error al eliminar datos en la API externa', error: error.message });
@@ -107,7 +113,7 @@ export default class PersonajeControladorsController {
     const actorData = this.generateActorData(); // Genera un actor falso
 
     try {
-      await this.makeApiRequest('post', 'http://192.168.1.135:8000/api/marcas', actorData);
+      await this.makeApiRequest('post', '/api/marcas', actorData); // Solo el endpoint relativo
     } catch (error) {
       console.error('Error enviando el actor a la API:', error);
     }

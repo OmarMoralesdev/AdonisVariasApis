@@ -12,7 +12,7 @@ export default class Episodio extends compose(BaseModel, SoftDeletes) {
   declare nacionalidad: string;
 
   @column()
-  declare temporadaId: number
+  declare temporada_id: number
   @column.dateTime({ autoCreate: true })
   declare createdAt: DateTime
 

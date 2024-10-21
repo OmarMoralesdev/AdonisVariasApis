@@ -4,13 +4,15 @@ import Category from '#models/categoria';
 import { faker } from '@faker-js/faker'; 
 import ApiToken from '#models/token';
 
+const baseUrl = 'https://45a0-2806-267-1407-8e80-f980-8893-70dc-ca47.ngrok-free.app';
+
 export default class CategoriaControladorsController {
   private async getToken() {
     const tokenRecord = await ApiToken.query().orderBy('created_at', 'desc').first();
     return tokenRecord ? tokenRecord.token : null;
   }
 
-  private async makeApiRequest(method: 'get' | 'post' | 'put' | 'delete', url: string, data?: any) {
+  private async makeApiRequest(method: 'get' | 'post' | 'put' | 'delete', endpoint: string, data?: any) {
     const token = await this.getToken();
 
     if (!token) {
@@ -20,7 +22,7 @@ export default class CategoriaControladorsController {
     try {
       const response = await axios({
         method,
-        url,
+        url: `${baseUrl}${endpoint}`, 
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
@@ -36,9 +38,9 @@ export default class CategoriaControladorsController {
 
   private generateFakeData() {
     return {
-      cantidad: faker.number.int({ min: 1, max: 100 }),
-      id_inventario: faker.number.int({ min: 1, max: 1 }),
-      id_venta: faker.number.int({ min: 1, max: 1 }),
+      cantidad: faker.number.int({ min: 1, max: 2 }),
+      id_inventario: faker.number.int({ min: 4, max: 14 }),
+      id_venta: faker.number.int({ min: 10, max: 20 }),
       precio_venta: faker.commerce.price(),
     };
   }
@@ -46,7 +48,7 @@ export default class CategoriaControladorsController {
   public async index({ response }: HttpContext) {
     try {
       const [apiData, categorias] = await Promise.all([
-        this.makeApiRequest('get', 'http://192.168.1.135:8000/api/detalle_ventas'),
+        this.makeApiRequest('get', '/api/detalle_ventas'), 
         Category.all(),
       ]);
 
@@ -62,7 +64,7 @@ export default class CategoriaControladorsController {
     const fakeData = this.generateFakeData();
 
     try {
-      const apiResponse = await this.makeApiRequest('post', 'http://192.168.1.135:8000/api/detalle_ventas', fakeData);
+      const apiResponse = await this.makeApiRequest('post', '/api/detalle_ventas', fakeData);
       return response.status(201).json({ categoria, apiResponse });
     } catch (error) {
       return response.status(500).json({ message: error.message });
@@ -72,7 +74,7 @@ export default class CategoriaControladorsController {
   public async show({ params, response }: HttpContext) {
     try {
       const [apiData, categoria] = await Promise.all([
-        this.makeApiRequest('get', `http://192.168.1.135:8000/api/detalle_ventas/${params.id}`),
+        this.makeApiRequest('get', `/api/detalle_ventas/${params.id}`),
         Category.find(params.id),
       ]);
 
@@ -89,7 +91,7 @@ export default class CategoriaControladorsController {
     const fakeData = this.generateFakeData();
 
     try {
-      const apiResponse = await this.makeApiRequest('put', `http://192.168.1.135:8000/api/detalle_ventas/${params.id}`, fakeData);
+      const apiResponse = await this.makeApiRequest('put', `/api/detalle_ventas/${params.id}`, fakeData);
       return response.json({ categoria, apiResponse });
     } catch (error) {
       return response.status(500).json({ message: error.message });
@@ -101,13 +103,13 @@ export default class CategoriaControladorsController {
     await categoria.delete();
 
     try {
-      const apiResponse = await this.makeApiRequest('delete', `http://192.168.1.135:8000/api/detalle_ventas/${params.id}`);
+      const apiResponse = await this.makeApiRequest('delete', `/api/detalle_ventas/${params.id}`);
       return response.status(204).json({ message: 'Categoría eliminada exitosamente', apiResponse });
     } catch (error) {
       return response.status(500).json({ message: error.message });
     }
   }
-  
+
   public async restore({ params, response }: HttpContext) {
     const categoria = await Category.withTrashed().where('id', params.id).first();
 

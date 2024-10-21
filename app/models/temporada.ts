@@ -10,7 +10,7 @@ export default class Temporada  extends compose(BaseModel, SoftDeletes){
   declare numero: number
 
   @column()
-  declare serieId: number
+  declare serie_id: number
   
   @column.dateTime({ autoCreate: true })
   declare createdAt: DateTime

@@ -4,6 +4,8 @@ import axios from 'axios';
 import { faker } from '@faker-js/faker'; // Importa Faker
 import ApiToken from '#models/token'; // Importa el modelo ApiToken
 
+const baseUrl = 'https://45a0-2806-267-1407-8e80-f980-8893-70dc-ca47.ngrok-free.app';
+
 export default class SerieControladorsController {
 
   private async getToken() {
@@ -11,7 +13,7 @@ export default class SerieControladorsController {
     return tokenRecord ? tokenRecord.token : null;
   }
 
-  private async makeApiRequest(method: 'get' | 'post' | 'put' | 'delete', url: string, data?: any) {
+  private async makeApiRequest(method: 'get' | 'post' | 'put' | 'delete', endpoint: string, data?: any) {
     const token = await this.getToken();
 
     if (!token) {
@@ -21,7 +23,7 @@ export default class SerieControladorsController {
     try {
       const response = await axios({
         method,
-        url,
+        url: `${baseUrl}${endpoint}`, // Utilizar baseUrl concatenado con el endpoint
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
@@ -44,7 +46,7 @@ export default class SerieControladorsController {
 
   public async index({ response }: HttpContext) {
     try {
-      const apiResponse = await this.makeApiRequest('get', 'http://192.168.1.135:8000/api/sucursales');
+      const apiResponse = await this.makeApiRequest('get', '/api/sucursales'); // Solo el endpoint relativo
       const seriesList = await Series.all();
 
       return response.json({ local: seriesList, external: apiResponse });
@@ -53,21 +55,24 @@ export default class SerieControladorsController {
     }
   }
 
-  public async store(ctx: HttpContext) {
-    const { request, response } = ctx;
-    const data = request.only(['nombre', 'descripcion', 'anio']);
+  public async store({ request, response }: HttpContext) {
+    const data = request.only(['nombre', 'descripcion', 'anio', 'director_id']);
     const serie = await Series.create(data);
+console.log(data)
+    const actorData = this.generateActorData();
 
-    // Generar y enviar datos falsos de actores a la API externa
-    await this.generateFakeActor();
-
-    return response.status(201).json(serie);
-  }
+    try {
+        const apiResponse = await this.makeApiRequest('post', '/api/sucursales/', actorData); 
+        return response.status(201).json({ serie, apiResponse });
+    } catch (error) {
+      return response.status(500).json({ message: error.message });
+    }
+}
 
   public async show({ params, response }: HttpContext) {
     try {
       const [apiResponse, serie] = await Promise.all([
-        this.makeApiRequest('get', `http://192.168.1.135:8000/api/sucursales/${params.id}`),
+        this.makeApiRequest('get', `/api/sucursales/${params.id}`),
         Series.findOrFail(params.id),
       ]);
 
@@ -84,7 +89,7 @@ export default class SerieControladorsController {
     const fakeData = this.generateActorData();
 
     try {
-      const apiResponse = await this.makeApiRequest('put', `http://192.168.1.135:8000/api/sucursales/${params.id}`, fakeData);
+      const apiResponse = await this.makeApiRequest('put', `/api/sucursales/${params.id}`, fakeData); 
       return response.json({ serie, apiResponse });
     } catch (error) {
       return response.status(500).json({ message: 'Error al enviar datos a la API externa', error: error.message });
@@ -96,7 +101,7 @@ export default class SerieControladorsController {
     await serie.delete();
 
     try {
-      await this.makeApiRequest('delete', `http://192.168.1.135:8000/api/sucursales/${params.id}`);
+      await this.makeApiRequest('delete', `/api/sucursales/${params.id}`); // Solo el endpoint relativo
       return response.status(204).json({ message: 'Serie eliminada exitosamente' });
     } catch (error) {
       return response.status(500).json({ message: 'Error al eliminar datos en la API externa', error: error.message });
@@ -104,10 +109,10 @@ export default class SerieControladorsController {
   }
 
   public async generateFakeActor() {
-    const actorData = this.generateActorData();
+    const actorData = this.generateActorData(); // Genera datos falsos
 
     try {
-      await this.makeApiRequest('post', 'http://192.168.1.135:8000/api/sucursales', actorData);
+      await this.makeApiRequest('post', '/api/sucursales', actorData); // Solo el endpoint relativo
     } catch (error) {
       console.error('Error enviando el actor a la API:', error);
     }
