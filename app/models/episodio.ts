@@ -6,10 +6,7 @@ export default class Episodio extends compose(BaseModel, SoftDeletes) {
   @column({ isPrimary: true })
   declare id: number
   @column()
-  declare nombre: string;
-
-  @column()
-  declare nacionalidad: string;
+  declare titulo: string;
 
   @column()
   declare temporada_id: number

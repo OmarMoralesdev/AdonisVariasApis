@@ -99,11 +99,11 @@ router.delete('/categorias/:id', [CategoríaControlador, 'destroy']).use(middlew
   */
 
 const AuthController = () => import('#controllers/auth_controller')
+router.post('registrar', [AuthController, 'registrar'])
+router.post('login', [AuthController, 'login3'])
+router.post('registrarlocal', [AuthController, 'registrarJWT'])
+router.post('loginlocal', [AuthController, 'loginJWT'])
 
-router.post('register', [AuthController, 'register'])
-router.post('login2', [AuthController, 'login'])
-
-router.post('login', [AuthController, 'loginOtraApi'])
 
 router
   .get('me', async ({ auth, response }) => {

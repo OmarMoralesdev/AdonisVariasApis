@@ -1,52 +1,52 @@
 import Season from '#models/temporada';
 import type { HttpContext } from '@adonisjs/core/http';
 import axios from 'axios';
-import { faker } from '@faker-js/faker'; // Importa Faker
-import ApiToken from '#models/token'; // Importa el modelo ApiToken
+import { faker } from '@faker-js/faker';
+import ApiToken from '#models/token';
 
-const baseUrl = 'https://45a0-2806-267-1407-8e80-f980-8893-70dc-ca47.ngrok-free.app';
+import env from '#start/env'
 
+const baseUrl = env.get('baseUrl');
 export default class TemporadaControladorsController {
-
-  private async getToken() {
+  private async obtenerToken() {
     const tokenRecord = await ApiToken.query().orderBy('created_at', 'desc').first();
     return tokenRecord ? tokenRecord.token : null;
   }
 
-  private async makeApiRequest(method: 'get' | 'post' | 'put' | 'delete', endpoint: string, data?: any) {
-    const token = await this.getToken();
+  private async hacerSolicitudApi(method: 'get' | 'post' | 'put' | 'delete', endpoint: string, data?: any) {
+    const token = await this.obtenerToken();
 
     if (!token) {
       throw new Error('Token no disponible para realizar la solicitud.');
     }
 
     try {
-      const response = await axios({
+      const respuesta = await axios({
         method,
-        url: `${baseUrl}${endpoint}`, // Utilizar baseUrl concatenado con el endpoint
+        url: `${baseUrl}${endpoint}`,
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
         },
         data,
       });
-      return response.data;
+      return respuesta.data;
     } catch (error) {
       console.error('Error en la solicitud a la API externa:', error);
       throw new Error('Error al comunicarse con la API externa.');
     }
   }
 
-  private generateActorData() {
+  private generarDatosFalsosActor() {
     return {
-      contacto: faker.phone.number({style: 'national'}),
-      id_persona: faker.number.int({ min: 13, max: 20 }),
+      contacto: faker.phone.number({ style: 'national' }),
+      id_persona: 1,
     };
   }
 
   public async index({ response }: HttpContext) {
     try {
-      const apiResponse = await this.makeApiRequest('get', '/api/proveedores'); 
+      const apiResponse = await this.hacerSolicitudApi('get', '/api/proveedores'); 
       const temporadas = await Season.all();
 
       return response.json({ local: temporadas, external: apiResponse });
@@ -55,15 +55,14 @@ export default class TemporadaControladorsController {
     }
   }
 
-  public async store(ctx: HttpContext) {
-    const { request, response } = ctx;
+  public async store({ request, response }: HttpContext) {
     const data = request.only(['numero', 'serie_id']);
     const temporada = await Season.create(data);
- 
-    const actorData = this.generateActorData();
+
+    const actorData = this.generarDatosFalsosActor();
     try {
-        const apiResponse = await this.makeApiRequest('post', '/api/proveedores/', actorData); 
-        return response.status(201).json({ temporada, apiResponse });
+      const apiResponse = await this.hacerSolicitudApi('post', '/api/proveedores/', actorData); 
+      return response.status(201).json({ temporada, apiResponse });
     } catch (error) {
       return response.status(500).json({ message: error.message });
     }
@@ -71,11 +70,9 @@ export default class TemporadaControladorsController {
 
   public async show({ params, response }: HttpContext) {
     try {
-      const [apiResponse, temporada] = await Promise.all([
-        this.makeApiRequest('get', `/api/proveedores/${params.id}`), // Solo el endpoint relativo
-        Season.findOrFail(params.id),
-      ]);
-
+      const apiResponse = await this.hacerSolicitudApi('get', `/api/proveedores/${params.id}`);
+      const temporada = await Season.findOrFail(params.id);
+  
       return response.json({ local: temporada, external: apiResponse });
     } catch (error) {
       return response.status(500).json({ message: error.message });
@@ -86,10 +83,10 @@ export default class TemporadaControladorsController {
     const temporada = await Season.findOrFail(params.id);
     temporada.merge(request.only(['numero', 'serie_id']));
     await temporada.save();
-    const fakeData = this.generateActorData();
+    const fakeData = this.generarDatosFalsosActor();
 
     try {
-      const apiResponse = await this.makeApiRequest('put', `/api/proveedores/${params.id}`, fakeData); // Solo el endpoint relativo
+      const apiResponse = await this.hacerSolicitudApi('put', `/api/proveedores/${params.id}`, fakeData);
       return response.json({ temporada, apiResponse });
     } catch (error) {
       return response.status(500).json({ message: 'Error al actualizar datos en la API externa', error: error.message });
@@ -101,18 +98,18 @@ export default class TemporadaControladorsController {
     await temporada.delete();
 
     try {
-      await this.makeApiRequest('delete', `/api/proveedores/${params.id}`); 
-      return response.status(204).json({ message: 'Temporada eliminada exitosamente' });
+      const apiResponse = await this.hacerSolicitudApi('delete', `/api/proveedores/${params.id}`); 
+      return response.status(204).json({ message: 'Temporada eliminada exitosamente', apiResponse });
     } catch (error) {
       return response.status(500).json({ message: 'Error al eliminar datos en la API externa', error: error.message });
     }
   }
 
-  public async generateFakeActor() {
-    const actorData = this.generateActorData();
+  public async enviarDatosFalsosActor() {
+    const actorData = this.generarDatosFalsosActor();
 
     try {
-      await this.makeApiRequest('post', '/api/proveedores', actorData); 
+      await this.hacerSolicitudApi('post', '/api/proveedores', actorData); 
     } catch (error) {
       console.error('Error enviando el actor a la API:', error);
     }

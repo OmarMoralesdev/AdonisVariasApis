@@ -3,40 +3,41 @@ import type { HttpContext } from '@adonisjs/core/http';
 import axios from 'axios';
 import { faker } from '@faker-js/faker';
 import ApiToken from '#models/token';
+import env from '#start/env'
 
-const baseUrl = 'https://45a0-2806-267-1407-8e80-f980-8893-70dc-ca47.ngrok-free.app';
+const baseUrl = env.get('baseUrl');
 
 export default class ActorControladorsController {
-  private async getToken() {
+  private async obtenerToken() {
     const tokenRecord = await ApiToken.query().orderBy('created_at', 'desc').first();
     return tokenRecord ? tokenRecord.token : null;
   }
 
-  private async makeApiRequest(method: 'get' | 'post' | 'put' | 'delete', endpoint: string, data?: any) {
-    const token = await this.getToken();
+  private async hacerSolicitudApi(method: 'get' | 'post' | 'put' | 'delete', endpoint: string, data?: any) {
+    const token = await this.obtenerToken();
 
     if (!token) {
       throw new Error('Token no disponible para realizar la solicitud.');
     }
 
     try {
-      const response = await axios({
+      const respuesta = await axios({
         method,
-        url: `${baseUrl}${endpoint}`, // Usar el baseUrl concatenado con el endpoint
+        url: `${baseUrl}${endpoint}`,
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
         },
         data,
       });
-      return response.data;
+      return respuesta.data;
     } catch (error) {
       console.error('Error en la solicitud a la API externa:', error);
       throw new Error('Error al comunicarse con la API externa.');
     }
   }
 
-  private generateActorData() {
+  private generarDatosFalsosActor() {
     return {
       nombre: faker.name.firstName(),
       descripcion: faker.lorem.sentence(),
@@ -45,10 +46,8 @@ export default class ActorControladorsController {
 
   public async index({ response }: HttpContext) {
     try {
-      const [apiResponse, actores] = await Promise.all([
-        this.makeApiRequest('get', '/api/departamentos/'), // Solo se pasa el endpoint
-        Actor.all(),
-      ]);
+      const apiResponse = await this.hacerSolicitudApi('get', '/api/departamentos/');
+      const actores = await Actor.all();
 
       return response.json({ local: actores, external: apiResponse });
     } catch (error) {
@@ -59,10 +58,10 @@ export default class ActorControladorsController {
   public async store({ request, response }: HttpContext) {
     const data = request.only(['nombre', 'nacionalidad']);
     const actor = await Actor.create(data);
-    const actorData = this.generateActorData();
+    const actorData = this.generarDatosFalsosActor();
 
     try {
-      const apiResponse = await this.makeApiRequest('post', '/api/departamentos/', actorData); 
+      const apiResponse = await this.hacerSolicitudApi('post', '/api/departamentos/', actorData); 
       return response.status(201).json({ actor, apiResponse });
     } catch (error) {
       return response.status(500).json({ actor, message: 'Error al enviar actor a la API' });
@@ -71,11 +70,9 @@ export default class ActorControladorsController {
 
   public async show({ params, response }: HttpContext) {
     try {
-      const [apiResponse, actor] = await Promise.all([
-        this.makeApiRequest('get', `/api/departamentos/${params.id}`),
-        Actor.find(params.id),
-      ]);
-
+      const apiResponse = await this.hacerSolicitudApi('get', `/api/departamentos/${params.id}`);
+      const actor = await Actor.find(params.id);
+  
       return response.json({ local: actor, external: apiResponse });
     } catch (error) {
       return response.status(500).json({ message: error.message });
@@ -87,10 +84,10 @@ export default class ActorControladorsController {
     actor.merge(request.only(['nombre', 'nacionalidad']));
     await actor.save();
 
-    const fakeActorData = this.generateActorData();
+    const fakeActorData = this.generarDatosFalsosActor();
 
     try {
-      const apiResponse = await this.makeApiRequest('put', `/api/departamentos/${params.id}`, fakeActorData); // Solo se pasa el endpoint
+      const apiResponse = await this.hacerSolicitudApi('put', `/api/departamentos/${params.id}`, fakeActorData);
       return response.json({ actor, apiResponse });
     } catch (error) {
       return response.status(500).json({ actor, message: 'Error al actualizar actor en la API' });
@@ -102,9 +99,8 @@ export default class ActorControladorsController {
       const actor = await Actor.findOrFail(params.id);
       await actor.delete();
 
-      const apiResponse = await this.makeApiRequest('delete', `/api/departamentos/${params.id}`); 
-
-      return response.status(204).json({ message: 'Actor eliminado exitosamente', apiResponse });
+      const apiResponse = await this.hacerSolicitudApi('delete', `/api/departamentos/${params.id}`);
+      return response.status(200).json({ message: 'Actor eliminado exitosamente', apiResponse });
     } catch (error) {
       return response.status(500).json({ error: 'Error al eliminar actor' });
     }
